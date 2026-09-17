@@ -16,6 +16,7 @@
 </head>
 <body>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
 <style>
   :root{
     --bg:#F2F1EC;
@@ -163,6 +164,9 @@
   .ht-tag-id{font-size:15px;font-weight:700;}
   .ht-tag-item{font-size:12.5px;color:var(--ink-soft);margin-top:1px;}
   .ht-hl-row{display:flex;gap:8px;margin-top:10px;}
+  .ht-tag-collapsed{display:flex;align-items:center;gap:8px;cursor:pointer;}
+  .ht-tag-collapsed .ht-hl-box{flex:1;}
+  .ht-tag-expanded{margin-top:11px;padding-top:11px;border-top:1px solid var(--line);}
   .ht-hl-box{flex:1;background:#EAF1F5;border:1.5px solid var(--accent);border-radius:8px;padding:7px 10px;text-align:center;}
   .ht-hl-label{font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.3px;}
   .ht-hl-value{font-size:20px;font-weight:800;color:var(--ink);line-height:1.2;margin-top:1px;}
@@ -265,6 +269,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       Buscar
     </button>
+    <button class="ht-tab" data-tab="scan" onclick="htSwitchTab('scan')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="8" x2="7" y2="16"/><line x1="10" y1="8" x2="10" y2="16"/><line x1="13" y1="8" x2="13" y2="16"/><line x1="16" y1="8" x2="16" y2="16"/><line x1="18" y1="8" x2="18" y2="16"/></svg>
+      Escanear
+    </button>
     <button class="ht-tab" data-tab="resumen" onclick="htSwitchTab('resumen')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v1H8V3a1 1 0 0 1 1-1z"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="13" y2="15"/></svg>
       Resumen
@@ -342,6 +350,7 @@
   }
 
   window.htSwitchTab = function(tab){
+    if(currentTab==='scan' && tab!=='scan'){ htCleanupScanner(); scanning=false; }
     currentTab = tab;
     document.querySelectorAll('.ht-tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
     htRender();
@@ -374,6 +383,7 @@
     document.getElementById('ht-total-badge').textContent = records.length + ' bundles';
     const subs = {
       buscar: 'Busca por secuencia de horno',
+      scan: 'Escanea el código de barras del bundle',
       resumen: 'Secuencias con Pass/Fail pendiente',
       sync: 'Sincronizar con el Excel'
     };
@@ -384,6 +394,7 @@
     htUpdateHeader();
     const c = document.getElementById('ht-content');
     if(currentTab==='buscar') c.innerHTML = htRenderBuscar();
+    else if(currentTab==='scan') c.innerHTML = htRenderScan();
     else if(currentTab==='resumen') c.innerHTML = htRenderResumen();
     else c.innerHTML = htRenderSync();
   }
@@ -436,27 +447,130 @@
     htRender();
   };
 
+  let expandedTags = {};
+
   function htTagCard(r){
     const statusClass = r.passFail==='P' ? 'ht-status-pass' : r.passFail==='F' ? 'ht-status-fail' : 'ht-status-pending';
     const statusLabel = r.passFail==='P' ? 'PASS' : r.passFail==='F' ? 'FAIL' : 'PENDIENTE';
     const borderColor = r.passFail==='P' ? 'var(--pass)' : r.passFail==='F' ? 'var(--fail)' : 'var(--pending)';
+    const isOpen = !!expandedTags[r.id];
     let html = '<div class="ht-tag-card" style="border-left-color:'+borderColor+'">';
-    html += '<div class="ht-tag-top"><div><div class="ht-tag-id">'+esc(r.tagNumber)+'</div><div class="ht-tag-item">'+esc(r.itemNumber)+'</div></div>';
-    html += '<span class="ht-status-btn '+statusClass+'">'+statusLabel+'</span></div>';
-    html += '<div class="ht-hl-row">';
+
+    html += '<div class="ht-tag-collapsed" onclick="htToggleTag(\''+r.id+'\')">';
+    html += '<div class="ht-hl-box"><div class="ht-hl-label">No. de parte</div><div class="ht-hl-value">'+esc(r.itemNumber||'—')+'</div></div>';
     html += '<div class="ht-hl-box"><div class="ht-hl-label">Rack</div><div class="ht-hl-value">'+esc(r.rackNo||'—')+'</div></div>';
-    html += '<div class="ht-hl-box"><div class="ht-hl-label">Piezas</div><div class="ht-hl-value">'+fmtNum(r.qtyProd,0)+'</div></div>';
+    html += '<div class="ht-chevron" style="transform:rotate('+(isOpen?90:0)+'deg)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>';
     html += '</div>';
-    html += '<div class="ht-tag-grid">';
-    html += '<div><span>Prensa</span>'+esc(r.press)+'</div>';
-    html += '<div><span>Peso (LB)</span>'+fmtNum(r.bundleWeight,2)+'</div>';
-    html += '<div><span>Aleación</span>'+esc(r.alloy||'—')+'</div>';
-    html += '<div><span>Temple</span>'+esc(r.temper||'—')+'</div>';
-    html += '<div><span>Turno</span>'+esc(r.extrusionShift||'—')+'</div>';
-    html += '<div><span>Fecha</span>'+fmtDate(r.extrusionDate)+'</div>';
-    html += '<div><span>Orden</span>'+esc(r.orderNumber||'—')+'</div>';
-    html += '</div></div>';
+
+    if(isOpen){
+      html += '<div class="ht-tag-expanded">';
+      html += '<div class="ht-tag-top"><div><div class="ht-tag-id">'+esc(r.tagNumber)+'</div><div class="ht-tag-item">Tag Number</div></div>';
+      html += '<span class="ht-status-btn '+statusClass+'">'+statusLabel+'</span></div>';
+      html += '<div class="ht-hl-row">';
+      html += '<div class="ht-hl-box"><div class="ht-hl-label">Piezas</div><div class="ht-hl-value">'+fmtNum(r.qtyProd,0)+'</div></div>';
+      html += '</div>';
+      html += '<div class="ht-tag-grid">';
+      html += '<div><span>Prensa</span>'+esc(r.press)+'</div>';
+      html += '<div><span>Peso (LB)</span>'+fmtNum(r.bundleWeight,2)+'</div>';
+      html += '<div><span>Aleación</span>'+esc(r.alloy||'—')+'</div>';
+      html += '<div><span>Temple</span>'+esc(r.temper||'—')+'</div>';
+      html += '<div><span>Turno</span>'+esc(r.extrusionShift||'—')+'</div>';
+      html += '<div><span>Fecha</span>'+fmtDate(r.extrusionDate)+'</div>';
+      html += '<div><span>Orden</span>'+esc(r.orderNumber||'—')+'</div>';
+      html += '</div></div>';
+    }
+    html += '</div>';
     return html;
+  }
+
+  window.htToggleTag = function(id){
+    expandedTags[id] = !expandedTags[id];
+    htRender();
+  };
+
+  // ---------- ESCANEAR ----------
+  let scanning = false;
+  let scanResult = null;
+  let scanNotFound = null;
+  let zxingReader = null;
+
+  function htRenderScan(){
+    let html = '';
+
+    if(scanning){
+      html += '<div class="ht-card" style="padding:10px">';
+      html += '<video id="ht-scan-video" autoplay playsinline muted style="width:100%;border-radius:8px;background:#000;display:block;max-height:340px;object-fit:cover"></video>';
+      html += '<div style="font-size:12px;color:var(--ink-soft);text-align:center;margin-top:10px">Centra el código de barras del bundle tag frente a la cámara</div>';
+      html += '<button class="ht-btn ht-btn-ghost ht-btn-block" style="margin-top:10px" onclick="htStopScan()">Cancelar</button>';
+      html += '</div>';
+      return html;
+    }
+
+    if(scanResult){
+      html += '<div class="ht-card"><div class="ht-label">CÓDIGO ESCANEADO</div><div style="font-size:17px;font-weight:800">'+esc(scanResult.tagNumber)+'</div></div>';
+      expandedTags[scanResult.id] = true;
+      html += htTagCard(scanResult);
+      html += '<button class="ht-btn ht-btn-primary ht-btn-block" onclick="htStartScan()">Escanear otro</button>';
+      return html;
+    }
+
+    if(scanNotFound){
+      html += '<div class="ht-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div>No se encontró ningún bundle con el código<br/><b>'+esc(scanNotFound)+'</b></div></div>';
+      html += '<button class="ht-btn ht-btn-primary ht-btn-block" onclick="htStartScan()">Escanear otro</button>';
+      return html;
+    }
+
+    html += '<div class="ht-card" style="text-align:center;padding:28px 16px">';
+    html += '<svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="var(--accent)" stroke-width="1.7" style="margin-bottom:10px"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="8" x2="7" y2="16"/><line x1="10" y1="8" x2="10" y2="16"/><line x1="13" y1="8" x2="13" y2="16"/><line x1="16" y1="8" x2="16" y2="16"/><line x1="18" y1="8" x2="18" y2="16"/></svg>';
+    html += '<div style="font-weight:700;font-size:15px;margin-bottom:6px">Escanear bundle tag</div>';
+    html += '<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;line-height:1.4">Apunta la cámara al código de barras del bundle tag y te muestro su información al instante.</div>';
+    html += '<button class="ht-btn ht-btn-primary ht-btn-block" onclick="htStartScan()">Iniciar cámara</button>';
+    html += '</div>';
+    return html;
+  }
+
+  window.htStartScan = async function(){
+    scanResult = null;
+    scanNotFound = null;
+    scanning = true;
+    htRender();
+    await new Promise(r=>setTimeout(r, 60)); // deja montar el <video>
+    try{
+      if(typeof ZXing === 'undefined'){ throw new Error('ZXing no disponible'); }
+      const videoElem = document.getElementById('ht-scan-video');
+      zxingReader = new ZXing.BrowserMultiFormatReader();
+      await zxingReader.decodeFromVideoDevice(null, videoElem, (result, err) => {
+        if(result){ htHandleScanResult(result.getText()); }
+      });
+    }catch(e){
+      console.error(e);
+      scanning = false;
+      htToast('No se pudo acceder a la cámara. Revisa los permisos.');
+      htRender();
+    }
+  };
+
+  window.htStopScan = function(){
+    htCleanupScanner();
+    scanning = false;
+    htRender();
+  };
+
+  function htCleanupScanner(){
+    if(zxingReader){
+      try{ zxingReader.reset(); }catch(e){}
+      zxingReader = null;
+    }
+  }
+
+  function htHandleScanResult(code){
+    htCleanupScanner();
+    scanning = false;
+    const clean = String(code).trim();
+    const rec = records.find(r=>String(r.tagNumber).trim()===clean);
+    if(rec){ scanResult = rec; scanNotFound = null; }
+    else{ scanResult = null; scanNotFound = clean; }
+    htRender();
   }
 
   // ---------- RESUMEN ----------
