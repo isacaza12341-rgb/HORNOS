@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Buscador de Hornos</title>
+<meta name="theme-color" content="#20242B">
+<meta name="description" content="Buscador de bundle tags por secuencia de horno">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hornos">
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#F2F1EC;
+    --panel:#FFFFFF;
+    --ink:#22252A;
+    --ink-soft:#5B6068;
+    --line:#E1DFD6;
+    --header:#20242B;
+    --header-ink:#F2F1EC;
+    --accent:#3B6E8F;
+    --accent-ink:#FFFFFF;
+    --pass:#3F8F5F;
+    --pass-bg:#E6F2EA;
+    --fail:#B54A3F;
+    --fail-bg:#F7E9E7;
+    --pending:#B8860B;
+    --pending-bg:#FBF1DA;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  #htapp{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    max-width:480px;
+    margin:0 auto;
+    font-variant-numeric:tabular-nums;
+    -webkit-font-smoothing:antialiased;
+  }
+  .ht-header{
+    background:var(--header);
+    color:var(--header-ink);
+    padding:16px 18px 14px;
+    position:sticky;
+    top:0;
+    z-index:20;
+  }
+  .ht-header-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
+  .ht-title{font-size:19px;font-weight:700;letter-spacing:0.2px;}
+  .ht-sub{font-size:12px;color:#A9AEB6;margin-top:2px;}
+  .ht-badge{
+    background:#333944;
+    color:#E7DCC4;
+    border-radius:20px;
+    padding:4px 11px;
+    font-size:12px;
+    font-weight:600;
+    white-space:nowrap;
+  }
+  .ht-content{flex:1;padding:14px 14px 90px;overflow-y:auto;}
+  .ht-tabbar{
+    position:sticky;
+    bottom:0;
+    display:flex;
+    background:var(--panel);
+    border-top:1px solid var(--line);
+    z-index:20;
+    padding-bottom:env(safe-area-inset-bottom,0);
+  }
+  .ht-tab{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:3px;
+    padding:9px 4px 8px;
+    background:none;
+    border:none;
+    color:var(--ink-soft);
+    font-size:11px;
+    font-weight:600;
+    font-family:inherit;
+  }
+  .ht-tab.active{color:var(--accent);}
+  .ht-tab svg{width:20px;height:20px;}
+
+  .ht-card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:13px 14px;
+    margin-bottom:10px;
+  }
+  .ht-label{font-size:11px;color:var(--ink-soft);font-weight:600;margin-bottom:6px;}
+  .ht-search-row{display:flex;gap:8px;}
+  .ht-input, .ht-select{
+    width:100%;
+    padding:11px 12px;
+    border:1.5px solid var(--line);
+    border-radius:8px;
+    font-size:16px;
+    font-family:inherit;
+    background:#FCFCFA;
+    color:var(--ink);
+  }
+  .ht-input:focus, .ht-select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+  .ht-btn{
+    padding:11px 16px;
+    border-radius:8px;
+    border:none;
+    font-size:15px;
+    font-weight:700;
+    font-family:inherit;
+  }
+  .ht-btn-primary{background:var(--accent);color:var(--accent-ink);}
+  .ht-btn-primary:active{opacity:0.85;}
+  .ht-btn-primary:disabled{opacity:0.5;}
+  .ht-btn-block{width:100%;padding:13px;font-size:16px;margin-top:6px;}
+  .ht-btn-ghost{background:#EDECE5;color:var(--ink);}
+
+  .ht-stats{display:flex;gap:8px;margin:2px 0 12px;}
+  .ht-stat{
+    flex:1;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:10px 8px;
+    text-align:center;
+  }
+  .ht-stat-num{font-size:19px;font-weight:800;line-height:1.1;}
+  .ht-stat-lbl{font-size:10.5px;color:var(--ink-soft);margin-top:2px;font-weight:600;}
+
+  .ht-press-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+  .ht-press-chip{
+    background:#E9EEF1;
+    color:var(--accent);
+    border-radius:20px;
+    padding:5px 11px;
+    font-size:12px;
+    font-weight:700;
+  }
+
+  .ht-tag-card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-left:4px solid var(--line);
+    border-radius:8px;
+    padding:11px 12px;
+    margin-bottom:8px;
+  }
+  .ht-tag-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .ht-tag-id{font-size:15px;font-weight:700;}
+  .ht-tag-item{font-size:12.5px;color:var(--ink-soft);margin-top:1px;}
+  .ht-hl-row{display:flex;gap:8px;margin-top:10px;}
+  .ht-hl-box{flex:1;background:#EAF1F5;border:1.5px solid var(--accent);border-radius:8px;padding:7px 10px;text-align:center;}
+  .ht-hl-label{font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.3px;}
+  .ht-hl-value{font-size:20px;font-weight:800;color:var(--ink);line-height:1.2;margin-top:1px;}
+
+  .ht-tag-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:6px 10px;
+    margin-top:9px;
+    font-size:12.5px;
+  }
+  .ht-tag-grid div span{display:block;color:var(--ink-soft);font-size:10.5px;font-weight:600;}
+  .ht-status-btn{
+    border:none;
+    border-radius:20px;
+    padding:5px 12px;
+    font-size:12px;
+    font-weight:700;
+    white-space:nowrap;
+  }
+  .ht-status-pending{background:var(--pending-bg);color:var(--pending);}
+  .ht-status-pass{background:var(--pass-bg);color:var(--pass);}
+  .ht-status-fail{background:var(--fail-bg);color:var(--fail);}
+
+  .ht-empty{
+    text-align:center;
+    padding:40px 20px;
+    color:var(--ink-soft);
+    font-size:13.5px;
+  }
+  .ht-empty svg{width:38px;height:38px;margin-bottom:10px;opacity:0.5;}
+
+  .ht-seq-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;}
+  .ht-seq-head{display:flex;justify-content:space-between;align-items:center;padding:13px 14px;}
+  .ht-seq-left{display:flex;align-items:center;gap:10px;}
+  .ht-seq-num{font-size:17px;font-weight:800;}
+  .ht-seq-meta{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+  .ht-chevron{transition:transform 0.15s;color:var(--ink-soft);}
+  .ht-seq-body{padding:0 14px 14px;border-top:1px solid var(--line);}
+  .ht-seq-stats{display:flex;gap:8px;padding:0 14px 13px;}
+  .ht-seq-stat{flex:1;border-radius:8px;padding:8px 6px;text-align:center;}
+  .ht-seq-stat.pend{background:var(--pending-bg);}
+  .ht-seq-stat.rel{background:var(--pass-bg);}
+  .ht-seq-stat-num{font-size:18px;font-weight:800;line-height:1.1;}
+  .ht-seq-stat.pend .ht-seq-stat-num{color:var(--pending);}
+  .ht-seq-stat.rel .ht-seq-stat-num{color:var(--pass);}
+  .ht-seq-stat-lbl{font-size:10.5px;font-weight:700;color:var(--ink-soft);margin-top:1px;}
+  .ht-seq-stat-sub{font-size:10.5px;color:var(--ink-soft);margin-top:1px;}
+
+
+  .ht-toast{
+    position:fixed;
+    left:50%;
+    bottom:86px;
+    transform:translateX(-50%);
+    background:#20242B;
+    color:#fff;
+    padding:10px 18px;
+    border-radius:24px;
+    font-size:13.5px;
+    font-weight:600;
+    z-index:50;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.2s, transform 0.2s;
+    max-width:90%;
+    text-align:center;
+  }
+  .ht-toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+
+  .ht-sync-box{
+    border:1.5px dashed var(--line);
+    border-radius:var(--radius);
+    padding:20px 16px;
+    text-align:center;
+    background:var(--panel);
+  }
+  .ht-sync-box svg{width:30px;height:30px;color:var(--accent);margin-bottom:8px;}
+  .ht-sync-title{font-size:14.5px;font-weight:700;margin-bottom:4px;}
+  .ht-sync-desc{font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;line-height:1.4;}
+  .ht-meta-row{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-soft);padding:8px 2px;border-top:1px solid var(--line);margin-top:4px;}
+  .ht-meta-row b{color:var(--ink);}
+</style>
+
+<div id="htapp">
+  <div class="ht-header">
+    <div class="ht-header-row">
+      <div>
+        <div class="ht-title">Buscador de Hornos</div>
+        <div class="ht-sub" id="ht-subtitle">Cargando datos…</div>
+      </div>
+      <div class="ht-badge" id="ht-total-badge">0 bundles</div>
+    </div>
+  </div>
+
+  <div class="ht-content" id="ht-content"></div>
+
+  <div class="ht-tabbar">
+    <button class="ht-tab active" data-tab="buscar" onclick="htSwitchTab('buscar')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Buscar
+    </button>
+    <button class="ht-tab" data-tab="resumen" onclick="htSwitchTab('resumen')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v1H8V3a1 1 0 0 1 1-1z"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="13" y2="15"/></svg>
+      Resumen
+    </button>
+    <button class="ht-tab" data-tab="sync" onclick="htSwitchTab('sync')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+      Excel
+    </button>
+  </div>
+
+  <div class="ht-toast" id="ht-toast"></div>
+  <input type="file" id="ht-file-input" accept=".xlsx,.xls" style="display:none" onchange="htHandleFile(event)" />
+</div>
+
+<script>
+(function(){
+  const SEED = {"headers": ["Tag Number", "Item Number", "Press", "Extrusion Date", "Qty Prod", "Extrusion Shift", "Bundle Weight (LB)", "Order Number", "Rack No.", "Aging Load #", "Pass Fail", "Description Line 1", "Customer Name", "Branch", "Line Number", "Alloy", "Temper", "Transfer Code", "Pass/ Fail", "Print Time", "Bundle Weight (KG)", "Webster 1", "Webster 2", "Oven Location"], "records": [{"id": "seed-2", "tagNumber": 22349543, "itemNumber": "95726-02", "press": "JJ-04", "extrusionDate": "2026-09-01", "qtyProd": 278, "extrusionShift": 1, "bundleWeight": 2116.8541, "orderNumber": 3404507, "rackNo": "107-JS", "secuencia": 37214, "passFail": "", "description": "BLUE--RACK", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "L", "Pass/ Fail": " ", "Print Time": 125450, "Bundle Weight (KG)": 960.205, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-3", "tagNumber": 22349509, "itemNumber": "101577-04", "press": "JJ-04", "extrusionDate": "2026-09-01", "qtyProd": 278, "extrusionShift": 1, "bundleWeight": 1980.75, "orderNumber": 3404504, "rackNo": "E98-FA", "secuencia": 37213, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 91415, "Bundle Weight (KG)": 898.4682, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-4", "tagNumber": 22349511, "itemNumber": "101577-04", "press": "JJ-04", "extrusionDate": "2026-09-01", "qtyProd": 278, "extrusionShift": 1, "bundleWeight": 1980.75, "orderNumber": 3404504, "rackNo": "258-FA", "secuencia": 37213, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 91415, "Bundle Weight (KG)": 898.4682, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-5", "tagNumber": 22349518, "itemNumber": "101577-04", "press": "JJ-04", "extrusionDate": "2026-09-01", "qtyProd": 278, "extrusionShift": 1, "bundleWeight": 1980.75, "orderNumber": 3404504, "rackNo": "E42-FA", "secuencia": 37213, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 91415, "Bundle Weight (KG)": 898.4682, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-6", "tagNumber": 22349519, "itemNumber": "101577-04", "press": "JJ-04", "extrusionDate": "2026-09-01", "qtyProd": 42, "extrusionShift": 1, "bundleWeight": 299.25, "orderNumber": 3404504, "rackNo": "184-FA", "secuencia": 37213, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 91415, "Bundle Weight (KG)": 135.7398, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-7", "tagNumber": 22349540, "itemNumber": "95726-02", "press": "JJ-04", "extrusionDate": "2026-09-01", "qtyProd": 278, "extrusionShift": 1, "bundleWeight": 2116.8541, "orderNumber": 3404507, "rackNo": "201-JS", "secuencia": 37213, "passFail": "", "description": "BLUE--RACK", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "L", "Pass/ Fail": " ", "Print Time": 124230, "Bundle Weight (KG)": 960.205, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-8", "tagNumber": 22349534, "itemNumber": "124650-01", "press": "JJ-01", "extrusionDate": "2026-09-01", "qtyProd": 521, "extrusionShift": 1, "bundleWeight": 1818.9413, "orderNumber": 3407776, "rackNo": "604-AD", "secuencia": 37210, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 103539, "Bundle Weight (KG)": 825.0718, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-9", "tagNumber": 22349542, "itemNumber": "124650-01", "press": "JJ-01", "extrusionDate": "2026-09-01", "qtyProd": 528, "extrusionShift": 1, "bundleWeight": 1843.38, "orderNumber": 3407776, "rackNo": "E28-AD", "secuencia": 37210, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 103539, "Bundle Weight (KG)": 836.1572, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-10", "tagNumber": 22349448, "itemNumber": "101577-03", "press": "JJ-04", "extrusionDate": "2026-09-01", "qtyProd": 278, "extrusionShift": 1, "bundleWeight": 1892.7166, "orderNumber": 3404503, "rackNo": "E105-JS", "secuencia": 37209, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 85441, "Bundle Weight (KG)": 858.5362, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-11", "tagNumber": 22349461, "itemNumber": "101577-03", "press": "JJ-04", "extrusionDate": "2026-09-01", "qtyProd": 266, "extrusionShift": 1, "bundleWeight": 1811.0166, "orderNumber": 3404503, "rackNo": "H001", "secuencia": 37209, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 90639, "Bundle Weight (KG)": 821.4771, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-12", "tagNumber": 22349476, "itemNumber": "101577-04", "press": "JJ-04", "extrusionDate": "2026-09-01", "qtyProd": 278, "extrusionShift": 1, "bundleWeight": 1980.75, "orderNumber": 3404504, "rackNo": "530-NAP", "secuencia": 37209, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 91415, "Bundle Weight (KG)": 898.4682, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-13", "tagNumber": 22349487, "itemNumber": "101577-04", "press": "JJ-04", "extrusionDate": "2026-09-01", "qtyProd": 278, "extrusionShift": 1, "bundleWeight": 1980.75, "orderNumber": 3404504, "rackNo": "557-FA", "secuencia": 37209, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 91415, "Bundle Weight (KG)": 898.4682, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-14", "tagNumber": 22349498, "itemNumber": "101577-04", "press": "JJ-04", "extrusionDate": "2026-09-01", "qtyProd": 278, "extrusionShift": 1, "bundleWeight": 1980.75, "orderNumber": 3404504, "rackNo": "E48-FA", "secuencia": 37209, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 91415, "Bundle Weight (KG)": 898.4682, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-15", "tagNumber": 22349502, "itemNumber": "101577-04", "press": "JJ-04", "extrusionDate": "2026-09-01", "qtyProd": 278, "extrusionShift": 1, "bundleWeight": 1980.75, "orderNumber": 3404504, "rackNo": "227-JS", "secuencia": 37209, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 91415, "Bundle Weight (KG)": 898.4682, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-16", "tagNumber": 22349467, "itemNumber": "112742-01", "press": "JJ-02", "extrusionDate": "2026-09-01", "qtyProd": 246, "extrusionShift": 1, "bundleWeight": 1409.4263, "orderNumber": 3407779, "rackNo": "541/VM", "secuencia": 37208, "passFail": "", "description": "BLUE--RACK", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "L", "Pass/ Fail": " ", "Print Time": 91954, "Bundle Weight (KG)": 639.3157, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-17", "tagNumber": 22349470, "itemNumber": "112742-01", "press": "JJ-02", "extrusionDate": "2026-09-01", "qtyProd": 246, "extrusionShift": 1, "bundleWeight": 1409.4263, "orderNumber": 3407779, "rackNo": "575/VM", "secuencia": 37208, "passFail": "", "description": "BLUE--RACK", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "L", "Pass/ Fail": " ", "Print Time": 92751, "Bundle Weight (KG)": 639.3157, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-18", "tagNumber": 22349475, "itemNumber": "112742-01", "press": "JJ-02", "extrusionDate": "2026-09-01", "qtyProd": 246, "extrusionShift": 1, "bundleWeight": 1409.4263, "orderNumber": 3407779, "rackNo": "148/VM", "secuencia": 37208, "passFail": "", "description": "BLUE--RACK", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "L", "Pass/ Fail": " ", "Print Time": 92751, "Bundle Weight (KG)": 639.3157, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-19", "tagNumber": 22349478, "itemNumber": "112742-01", "press": "JJ-02", "extrusionDate": "2026-09-01", "qtyProd": 116, "extrusionShift": 1, "bundleWeight": 664.6075, "orderNumber": 3407779, "rackNo": "226/VM", "secuencia": 37208, "passFail": "", "description": "BLUE--RACK", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "L", "Pass/ Fail": " ", "Print Time": 92751, "Bundle Weight (KG)": 301.466, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-20", "tagNumber": 22349489, "itemNumber": "118911-01", "press": "JJ-01", "extrusionDate": "2026-09-01", "qtyProd": 144, "extrusionShift": 1, "bundleWeight": 1478.016, "orderNumber": 3407775, "rackNo": "E32-AD", "secuencia": 37208, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 103205, "Bundle Weight (KG)": 670.4281, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-21", "tagNumber": 22349490, "itemNumber": "118911-01", "press": "JJ-01", "extrusionDate": "2026-09-01", "qtyProd": 144, "extrusionShift": 1, "bundleWeight": 1478.016, "orderNumber": 3407775, "rackNo": "E32-AD", "secuencia": 37208, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 103205, "Bundle Weight (KG)": 670.4281, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-22", "tagNumber": 22349491, "itemNumber": "118911-01", "press": "JJ-01", "extrusionDate": "2026-09-01", "qtyProd": 56, "extrusionShift": 1, "bundleWeight": 574.784, "orderNumber": 3407775, "rackNo": "838-AD", "secuencia": 37208, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 103205, "Bundle Weight (KG)": 260.722, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-23", "tagNumber": 22349492, "itemNumber": "118911-01", "press": "JJ-01", "extrusionDate": "2026-09-01", "qtyProd": 57, "extrusionShift": 1, "bundleWeight": 585.048, "orderNumber": 3407775, "rackNo": "838-AD", "secuencia": 37208, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 103205, "Bundle Weight (KG)": 265.3778, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-24", "tagNumber": 22349500, "itemNumber": "124650-01", "press": "JJ-01", "extrusionDate": "2026-09-01", "qtyProd": 383, "extrusionShift": 1, "bundleWeight": 1337.1488, "orderNumber": 3407776, "rackNo": "228-AD", "secuencia": 37208, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 103539, "Bundle Weight (KG)": 606.5307, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-25", "tagNumber": 22349510, "itemNumber": "124650-01", "press": "JJ-01", "extrusionDate": "2026-09-01", "qtyProd": 528, "extrusionShift": 1, "bundleWeight": 1843.38, "orderNumber": 3407776, "rackNo": "E43-AD", "secuencia": 37208, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 103539, "Bundle Weight (KG)": 836.1572, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-26", "tagNumber": 22349525, "itemNumber": "124650-01", "press": "JJ-01", "extrusionDate": "2026-09-01", "qtyProd": 528, "extrusionShift": 1, "bundleWeight": 1843.38, "orderNumber": 3407776, "rackNo": "301-AD", "secuencia": 37208, "passFail": "", "description": "WHITE - TAKE TO I/P", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T6", "extra": {"Line Number": 1, "Transfer Code": "I", "Pass/ Fail": " ", "Print Time": 103539, "Bundle Weight (KG)": 836.1572, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-27", "tagNumber": 22349504, "itemNumber": "121737-01", "press": "JJ-02", "extrusionDate": "2026-09-01", "qtyProd": 192, "extrusionShift": 1, "bundleWeight": 1072.896, "orderNumber": 3409188, "rackNo": "E102/VM", "secuencia": 0, "passFail": "", "description": "BLUE--RACK", "customerName": "Juarez LP", "branch": "2121", "alloy": "6105", "temper": "T5", "extra": {"Line Number": 1, "Transfer Code": "L", "Pass/ Fail": " ", "Print Time": 111050, "Bundle Weight (KG)": 486.6656, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-28", "tagNumber": 22349516, "itemNumber": "18958-02", "press": "JJ-02", "extrusionDate": "2026-09-01", "qtyProd": 181, "extrusionShift": 1, "bundleWeight": 1364.6419, "orderNumber": 3406176, "rackNo": "147/VM", "secuencia": 0, "passFail": "", "description": "BLUE RACK", "customerName": "Juarez LP", "branch": "2121", "alloy": "6063HS", "temper": "F", "extra": {"Line Number": 1, "Transfer Code": "L", "Pass/ Fail": " ", "Print Time": 114310, "Bundle Weight (KG)": 619.0016, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-29", "tagNumber": 22349521, "itemNumber": "18958-02", "press": "JJ-02", "extrusionDate": "2026-09-01", "qtyProd": 198, "extrusionShift": 1, "bundleWeight": 1492.8127, "orderNumber": 3406176, "rackNo": "129/VM", "secuencia": 0, "passFail": "", "description": "BLUE RACK", "customerName": "Juarez LP", "branch": "2121", "alloy": "6063HS", "temper": "F", "extra": {"Line Number": 1, "Transfer Code": "L", "Pass/ Fail": " ", "Print Time": 114310, "Bundle Weight (KG)": 677.1398, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-30", "tagNumber": 22349530, "itemNumber": "18958-02", "press": "JJ-02", "extrusionDate": "2026-09-01", "qtyProd": 198, "extrusionShift": 1, "bundleWeight": 1492.8127, "orderNumber": 3406176, "rackNo": "609/VM", "secuencia": 0, "passFail": "", "description": "BLUE RACK", "customerName": "Juarez LP", "branch": "2121", "alloy": "6063HS", "temper": "F", "extra": {"Line Number": 1, "Transfer Code": "L", "Pass/ Fail": " ", "Print Time": 114310, "Bundle Weight (KG)": 677.1398, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}, {"id": "seed-31", "tagNumber": 22349541, "itemNumber": "18958-02", "press": "JJ-02", "extrusionDate": "2026-09-01", "qtyProd": 198, "extrusionShift": 1, "bundleWeight": 1492.8127, "orderNumber": 3406176, "rackNo": "E12/VM", "secuencia": 0, "passFail": "", "description": "BLUE RACK", "customerName": "Juarez LP", "branch": "2121", "alloy": "6063HS", "temper": "F", "extra": {"Line Number": 1, "Transfer Code": "L", "Pass/ Fail": " ", "Print Time": 114310, "Bundle Weight (KG)": 677.1398, "Webster 1": 0, "Webster 2": " ", "Oven Location": " "}, "createdAt": "2026-09-01T08:00:00.000Z"}]};
+;
+
+  const RECORDS_KEY = 'bundle_tags_v1';
+  const META_KEY = 'bundle_tags_meta_v1';
+
+  const MANAGED_HEADERS = {
+    'Tag Number':'tagNumber','Item Number':'itemNumber','Press':'press','Extrusion Date':'extrusionDate',
+    'Qty Prod':'qtyProd','Extrusion Shift':'extrusionShift','Bundle Weight (LB)':'bundleWeight',
+    'Order Number':'orderNumber','Rack No.':'rackNo','Aging Load #':'secuencia','Pass Fail':'passFail',
+    'Description Line 1':'description','Customer Name':'customerName','Branch':'branch','Alloy':'alloy','Temper':'temper'
+  };
+
+  let records = [];
+  let headers = SEED.headers.slice();
+  let lastImport = null;
+  let lastExport = null;
+  let currentTab = 'buscar';
+  let searchSeq = '';
+  let expandedSeq = null;
+  let syncBusy = false;
+
+  async function htLoad(){
+    try{
+      const raw = localStorage.getItem(RECORDS_KEY);
+      records = raw ? JSON.parse(raw) : SEED.records.slice();
+      if(!raw){ await htSaveRecords(); }
+    }catch(e){
+      records = SEED.records.slice();
+      try{ await htSaveRecords(); }catch(e2){}
+    }
+    try{
+      const rawMeta = localStorage.getItem(META_KEY);
+      if(rawMeta){
+        const meta = JSON.parse(rawMeta);
+        headers = meta.headers && meta.headers.length ? meta.headers : headers;
+        lastImport = meta.lastImport || null;
+        lastExport = meta.lastExport || null;
+      }
+    }catch(e){ /* no meta yet, keep defaults */ }
+    htRender();
+  }
+
+  async function htSaveRecords(){
+    try{ localStorage.setItem(RECORDS_KEY, JSON.stringify(records)); }
+    catch(e){ console.error(e); htToast('No se pudo guardar en el teléfono.'); }
+  }
+  async function htSaveMeta(){
+    try{ localStorage.setItem(META_KEY, JSON.stringify({headers, lastImport, lastExport})); }
+    catch(e){ console.error(e); }
+  }
+
+  function htToast(msg){
+    const t = document.getElementById('ht-toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(()=>t.classList.remove('show'), 2200);
+  }
+
+  window.htSwitchTab = function(tab){
+    currentTab = tab;
+    document.querySelectorAll('.ht-tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+    htRender();
+  };
+
+  function esc(s){
+    return String(s===undefined||s===null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function fmtNum(n, dec){
+    if(n===undefined||n===null||n==='') return '—';
+    const num = Number(n);
+    if(isNaN(num)) return '—';
+    return num.toLocaleString('es-MX', {minimumFractionDigits:dec||0, maximumFractionDigits:dec||0});
+  }
+  function fmtDate(d){
+    if(!d) return '—';
+    const parts = String(d).split('-');
+    if(parts.length!==3) return d;
+    return parts[2]+'/'+parts[1]+'/'+parts[0].slice(2);
+  }
+  function fmtDateTime(iso){
+    if(!iso) return 'nunca';
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return 'nunca';
+    const pad = n=>String(n).padStart(2,'0');
+    return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+
+  function htUpdateHeader(){
+    document.getElementById('ht-total-badge').textContent = records.length + ' bundles';
+    const subs = {
+      buscar: 'Busca por secuencia de horno',
+      resumen: 'Secuencias con Pass/Fail pendiente',
+      sync: 'Sincronizar con el Excel'
+    };
+    document.getElementById('ht-subtitle').textContent = subs[currentTab];
+  }
+
+  function htRender(){
+    htUpdateHeader();
+    const c = document.getElementById('ht-content');
+    if(currentTab==='buscar') c.innerHTML = htRenderBuscar();
+    else if(currentTab==='resumen') c.innerHTML = htRenderResumen();
+    else c.innerHTML = htRenderSync();
+  }
+
+  // ---------- BUSCAR ----------
+  function htRenderBuscar(){
+    let html = '';
+    html += '<div class="ht-card">';
+    html += '<div class="ht-label">SECUENCIA DE HORNO</div>';
+    html += '<div class="ht-search-row">';
+    html += '<input class="ht-input" id="ht-search-input" type="number" inputmode="numeric" placeholder="Ej. 37209" value="'+esc(searchSeq)+'" />';
+    html += '<button class="ht-btn ht-btn-primary" onclick="htDoSearch()">Buscar</button>';
+    html += '</div></div>';
+
+    if(searchSeq===''){
+      html += '<div class="ht-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><div>Escribe una secuencia de horno<br/>para ver sus bundle tags</div></div>';
+      return html;
+    }
+
+    const matches = records.filter(r=>String(r.secuencia)===String(searchSeq));
+    if(matches.length===0){
+      html += '<div class="ht-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div>No hay bundles con la secuencia '+esc(searchSeq)+'</div></div>';
+      return html;
+    }
+
+    const totalWeight = matches.reduce((s,r)=>s+(Number(r.bundleWeight)||0),0);
+    const byPress = {};
+    matches.forEach(r=>{ const p=r.press||'—'; byPress[p]=(byPress[p]||0)+(Number(r.bundleWeight)||0); });
+
+    html += '<div class="ht-stats">';
+    html += '<div class="ht-stat"><div class="ht-stat-num">'+matches.length+'</div><div class="ht-stat-lbl">BUNDLES</div></div>';
+    html += '<div class="ht-stat"><div class="ht-stat-num">'+fmtNum(totalWeight,0)+'</div><div class="ht-stat-lbl">LIBRAS TOTAL</div></div>';
+    html += '</div>';
+
+    html += '<div class="ht-press-row">';
+    Object.keys(byPress).forEach(p=>{
+      html += '<div class="ht-press-chip">'+esc(p)+': '+fmtNum(byPress[p],0)+' lb</div>';
+    });
+    html += '</div>';
+
+    matches.sort((a,b)=>String(a.rackNo).localeCompare(String(b.rackNo)));
+    matches.forEach(r=>{ html += htTagCard(r); });
+
+    return html;
+  }
+
+  window.htDoSearch = function(){
+    const v = document.getElementById('ht-search-input').value.trim();
+    searchSeq = v;
+    htRender();
+  };
+
+  function htTagCard(r){
+    const statusClass = r.passFail==='P' ? 'ht-status-pass' : r.passFail==='F' ? 'ht-status-fail' : 'ht-status-pending';
+    const statusLabel = r.passFail==='P' ? 'PASS' : r.passFail==='F' ? 'FAIL' : 'PENDIENTE';
+    const borderColor = r.passFail==='P' ? 'var(--pass)' : r.passFail==='F' ? 'var(--fail)' : 'var(--pending)';
+    let html = '<div class="ht-tag-card" style="border-left-color:'+borderColor+'">';
+    html += '<div class="ht-tag-top"><div><div class="ht-tag-id">'+esc(r.tagNumber)+'</div><div class="ht-tag-item">'+esc(r.itemNumber)+'</div></div>';
+    html += '<span class="ht-status-btn '+statusClass+'">'+statusLabel+'</span></div>';
+    html += '<div class="ht-hl-row">';
+    html += '<div class="ht-hl-box"><div class="ht-hl-label">Rack</div><div class="ht-hl-value">'+esc(r.rackNo||'—')+'</div></div>';
+    html += '<div class="ht-hl-box"><div class="ht-hl-label">Piezas</div><div class="ht-hl-value">'+fmtNum(r.qtyProd,0)+'</div></div>';
+    html += '</div>';
+    html += '<div class="ht-tag-grid">';
+    html += '<div><span>Prensa</span>'+esc(r.press)+'</div>';
+    html += '<div><span>Peso (LB)</span>'+fmtNum(r.bundleWeight,2)+'</div>';
+    html += '<div><span>Aleación</span>'+esc(r.alloy||'—')+'</div>';
+    html += '<div><span>Temple</span>'+esc(r.temper||'—')+'</div>';
+    html += '<div><span>Turno</span>'+esc(r.extrusionShift||'—')+'</div>';
+    html += '<div><span>Fecha</span>'+fmtDate(r.extrusionDate)+'</div>';
+    html += '<div><span>Orden</span>'+esc(r.orderNumber||'—')+'</div>';
+    html += '</div></div>';
+    return html;
+  }
+
+  // ---------- RESUMEN ----------
+  function htRenderResumen(){
+    const seqMap = {};
+    records.forEach(r=>{
+      const s = r.secuencia===''||r.secuencia===undefined||r.secuencia===null ? null : String(r.secuencia);
+      if(s===null) return;
+      if(!seqMap[s]) seqMap[s] = [];
+      seqMap[s].push(r);
+    });
+    const pending = Object.keys(seqMap)
+      .map(s=>{
+        const items = seqMap[s];
+        const pendItems = items.filter(r=>!r.passFail);
+        return {seq:s, items, pendItems};
+      })
+      .filter(x=>x.pendItems.length>0)
+      .sort((a,b)=>b.pendItems.length-a.pendItems.length);
+
+    let html = '';
+    if(pending.length===0){
+      html += '<div class="ht-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20 6L9 17l-5-5"/></svg><div>No hay secuencias pendientes.<br/>Todo tiene Pass/Fail capturado.</div></div>';
+      return html;
+    }
+
+    pending.forEach(({seq, items, pendItems})=>{
+      const totalWeight = items.reduce((s,r)=>s+(Number(r.bundleWeight)||0),0);
+      const pendWeight = pendItems.reduce((s,r)=>s+(Number(r.bundleWeight)||0),0);
+      const liberadasCount = items.length - pendItems.length;
+      const liberadasWeight = items.filter(r=>r.passFail==='P').reduce((s,r)=>s+(Number(r.bundleWeight)||0),0);
+      const isOpen = expandedSeq===seq;
+      html += '<div class="ht-seq-card">';
+      html += '<div class="ht-seq-head" onclick="htToggleSeq(\''+seq+'\')" style="cursor:pointer">';
+      html += '<div class="ht-seq-left"><div><div class="ht-seq-num">'+esc(seq)+'</div>';
+      html += '<div class="ht-seq-meta">'+items.length+' etiquetas · '+fmtNum(totalWeight,0)+' lb totales</div></div></div>';
+      html += '<div class="ht-chevron" style="transform:rotate('+(isOpen?90:0)+'deg)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>';
+      html += '</div>';
+      html += '<div class="ht-seq-stats">';
+      html += '<div class="ht-seq-stat pend"><div class="ht-seq-stat-num">'+pendItems.length+'</div><div class="ht-seq-stat-lbl">Pendientes</div><div class="ht-seq-stat-sub">'+fmtNum(pendWeight,0)+' lb</div></div>';
+      html += '<div class="ht-seq-stat rel"><div class="ht-seq-stat-num">'+liberadasCount+'</div><div class="ht-seq-stat-lbl">Liberadas</div><div class="ht-seq-stat-sub">'+fmtNum(liberadasWeight,0)+' lb</div></div>';
+      html += '</div>';
+      if(isOpen){
+        html += '<div class="ht-seq-body">';
+        pendItems.sort((a,b)=>String(a.rackNo).localeCompare(String(b.rackNo)));
+        pendItems.forEach(r=>{ html += htTagCard(r); });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+    return html;
+  }
+
+  window.htToggleSeq = function(seq){
+    expandedSeq = expandedSeq===seq ? null : seq;
+    htRender();
+  };
+
+  // ---------- SINCRONIZAR ----------
+  function htRenderSync(){
+    let html = '';
+
+    html += '<div class="ht-sync-box">';
+    html += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>';
+    html += '<div class="ht-sync-title">Actualizar desde Excel</div>';
+    html += '<div class="ht-sync-desc">Selecciona el archivo "etiquetas - buscador de hornos.xlsx" más reciente. Se leerá la hoja Bundle Tags: bundles nuevos, cambios de Pass/Fail y demás datos se actualizan en el teléfono desde aquí. Esta es la única forma de capturar información en la app.</div>';
+    html += '<button class="ht-btn ht-btn-primary ht-btn-block" onclick="document.getElementById(\'ht-file-input\').click()" '+(syncBusy?'disabled':'')+'>'+(syncBusy?'Leyendo archivo…':'Elegir archivo Excel')+'</button>';
+    html += '</div>';
+
+    html += '<div class="ht-card" style="margin-top:12px">';
+    html += '<div class="ht-sync-title" style="margin-bottom:2px">Exportar a Excel</div>';
+    html += '<div class="ht-sync-desc" style="margin-bottom:10px">Genera un archivo Excel con la hoja Bundle Tags tal como está en el teléfono, útil como respaldo o para revisarla en la computadora.</div>';
+    html += '<button class="ht-btn ht-btn-ghost ht-btn-block" onclick="htExportExcel()">Exportar Bundle Tags</button>';
+    html += '</div>';
+
+    html += '<div class="ht-card">';
+    html += '<div class="ht-meta-row"><span>Última actualización desde Excel</span><b>'+fmtDateTime(lastImport)+'</b></div>';
+    html += '<div class="ht-meta-row"><span>Último archivo exportado</span><b>'+fmtDateTime(lastExport)+'</b></div>';
+    html += '<div class="ht-meta-row"><span>Bundles en el teléfono</span><b>'+records.length+'</b></div>';
+    html += '</div>';
+
+    return html;
+  }
+
+  window.htHandleFile = async function(ev){
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if(!file) return;
+    if(typeof XLSX === 'undefined'){
+      htToast('No se pudo cargar el lector de Excel. Revisa tu conexión.');
+      return;
+    }
+    syncBusy = true;
+    htRender();
+    try{
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, {type:'array', cellDates:true});
+      const sheetName = wb.SheetNames.find(n=>n.trim().toLowerCase()==='bundle tags') || wb.SheetNames[0];
+      const sheet = wb.Sheets[sheetName];
+      const aoa = XLSX.utils.sheet_to_json(sheet, {header:1, defval:'', raw:true});
+      if(!aoa.length){ htToast('El archivo no tiene datos.'); syncBusy=false; htRender(); return; }
+
+      const fileHeaders = (aoa[0]||[]).map(h=>String(h||'').trim()).filter(h=>h);
+      let added = 0, updated = 0, unchanged = 0;
+
+      for(let i=1; i<aoa.length; i++){
+        const row = aoa[i];
+        if(!row || row.every(v=>v==='' || v===undefined || v===null)) continue;
+        const rowObj = {};
+        fileHeaders.forEach((h, idx)=>{ rowObj[h] = row[idx]; });
+        if(!rowObj['Tag Number']) continue;
+
+        const imported = { extra:{} };
+        fileHeaders.forEach(h=>{
+          let v = rowObj[h];
+          if(v instanceof Date) v = v.toISOString().slice(0,10);
+          const key = MANAGED_HEADERS[h];
+          if(key){
+            if(key==='press' && typeof v === 'string') v = v.trim();
+            if(key==='branch' && typeof v === 'string') v = v.trim();
+            if(key==='passFail') v = v ? String(v).trim().toUpperCase() : '';
+            if(key==='bundleWeight') v = Number(v) || 0;
+            imported[key] = v===undefined||v===null ? '' : v;
+          } else {
+            imported.extra[h] = v===undefined||v===null ? '' : v;
+          }
+        });
+
+        const existing = records.find(r=>String(r.tagNumber)===String(imported.tagNumber));
+        if(existing){
+          const before = JSON.stringify(existing);
+          Object.keys(MANAGED_HEADERS).forEach(h=>{
+            const key = MANAGED_HEADERS[h];
+            if(key==='passFail') return;
+            if(imported[key]!==undefined) existing[key] = imported[key];
+          });
+          if(imported.passFail){ existing.passFail = imported.passFail; }
+          existing.extra = Object.assign({}, existing.extra||{}, imported.extra);
+          if(JSON.stringify(existing)!==before) updated++; else unchanged++;
+        } else {
+          records.push(Object.assign({id:'excel-'+imported.tagNumber, createdAt:new Date().toISOString()}, imported));
+          added++;
+        }
+      }
+
+      headers = fileHeaders;
+      lastImport = new Date().toISOString();
+      await htSaveRecords();
+      await htSaveMeta();
+      htToast(added+' nuevos · '+updated+' actualizados · '+unchanged+' sin cambios');
+    }catch(err){
+      console.error(err);
+      htToast('No se pudo leer el archivo. Verifica que sea el Excel correcto.');
+    }
+    syncBusy = false;
+    htRender();
+  };
+
+  window.htExportExcel = function(){
+    if(typeof XLSX === 'undefined'){
+      htToast('No se pudo cargar el generador de Excel.');
+      return;
+    }
+    const outHeaders = headers && headers.length ? headers : Object.keys(MANAGED_HEADERS);
+    const rows = [outHeaders];
+    records.forEach(r=>{
+      rows.push(outHeaders.map(h=>{
+        const key = MANAGED_HEADERS[h];
+        if(key) return r[key]===undefined||r[key]===null ? '' : r[key];
+        return (r.extra && r.extra[h]!==undefined) ? r.extra[h] : '';
+      }));
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wbOut = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbOut, ws, 'Bundle Tags');
+    const wbBin = XLSX.write(wbOut, {bookType:'xlsx', type:'array'});
+    const blob = new Blob([wbBin], {type:'application/octet-stream'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const stamp = new Date().toISOString().slice(0,10);
+    a.download = 'Bundle Tags - '+stamp+'.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    lastExport = new Date().toISOString();
+    htSaveMeta();
+    htToast('Archivo exportado');
+    htRender();
+  };
+
+  htLoad();
+})();
+</script>
+
+<script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('service-worker.js').catch(function(){});
+    });
+  }
+</script>
+</body>
+</html>
