@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hornos-app-v1';
+const CACHE_NAME = 'hornos-app-v2';
 const FILES_TO_CACHE = [
   './index.html',
   './manifest.json',
@@ -23,13 +23,29 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((res) => {
+  const req = event.request;
+  const isPage = req.mode === 'navigate' || req.url.endsWith('index.html') || req.url.endsWith('/');
+
+  if (isPage) {
+    // La página principal: siempre intenta traer lo más nuevo de internet.
+    // Solo usa la copia guardada si no hay conexión.
+    event.respondWith(
+      fetch(req).then((res) => {
         const resClone = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));
+        caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone));
         return res;
-      }).catch(() => cached);
-    })
-  );
+      }).catch(() => caches.match(req))
+    );
+  } else {
+    // Íconos, manifest, etc: usa la copia guardada (cambian poco, así carga más rápido).
+    event.respondWith(
+      caches.match(req).then((cached) => {
+        return cached || fetch(req).then((res) => {
+          const resClone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone));
+          return res;
+        }).catch(() => cached);
+      })
+    );
+  }
 });
